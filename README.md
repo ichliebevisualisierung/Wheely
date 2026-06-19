@@ -20,3 +20,41 @@ In a next step these requests (forward, backward, usw...) should be executed by 
 
 
 
+Dokumentation der Fahrttests (Fahrttests wurden erfolgreich durchgeführt): 
+
+(.venv) (base) PS C:\Users\Asus\Desktop\Wheely> $baseUrl = "http://wheely.local:8080"
+>> 
+>> function Test-Move {
+>>     param (
+>>         [string]$direction,
+>>         [int]$speed = 1200,
+>>         [int]$duration = 1000
+>>     )
+>> 
+>>     Write-Host "Teste: $direction"
+>>     Invoke-RestMethod -Method Post `
+>>         -Uri "$baseUrl/move" `
+>>         -ContentType "application/json" `
+>>         -Body "{`"direction`":`"$direction`",`"speed`":$speed,`"duration_ms`":$duration}"
+>> 
+>>     Start-Sleep -Seconds 2
+>> }
+>> 
+>> Test-Move -direction "forward"
+>> Test-Move -direction "backward"
+>> Test-Move -direction "left"
+>> Test-Move -direction "right"
+>> 
+>> Write-Host "Alle Fahrtests abgeschlossen."
+Teste: forward
+
+Teste: backward
+  ok result                                                                                  
+  -- ------                                                                                  
+True @{direction=forward; speed=1200; duration_ms=1000; left_motor=1200; right_motor=1200}   
+True @{direction=backward; speed=1200; duration_ms=1000; left_motor=-1200; right_motor=-1200}
+Teste: left
+True @{direction=left; speed=1200; duration_ms=1000; left_motor=-1200; right_motor=1200}     
+Teste: right
+True @{direction=right; speed=1200; duration_ms=1000; left_motor=1200; right_motor=-1200}    
+Alle Fahrtests abgeschlossen.
