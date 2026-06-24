@@ -1,0 +1,4 @@
+# Pi-Abhängigkeiten (Körper / HTTP-API)
+flask
+picamera2
+# Hardware-Libs (gpiozero, lgpio, rpi-ws281x) wurden via Freenove setup.py installiert

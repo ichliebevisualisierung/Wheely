@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+test_frame.jpg
+*.h264
+.venv/
+venv/
+yolov8n.pt

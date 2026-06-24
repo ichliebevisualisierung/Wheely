@@ -1,0 +1,8 @@
+# Laptop-Abhängigkeiten (Gehirn + Wahrnehmung)
+requests
+numpy
+opencv-python
+ultralytics          # YOLO
+networkx             # Graph + kürzeste Wege
+python-dotenv        # API-Keys aus .env
+openai               # für OpenAI-kompatible Uni-API (base_url anpassbar)
