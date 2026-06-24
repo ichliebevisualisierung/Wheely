@@ -58,3 +58,8 @@ True @{direction=left; speed=1200; duration_ms=1000; left_motor=-1200; right_mot
 Teste: right
 True @{direction=right; speed=1200; duration_ms=1000; left_motor=1200; right_motor=-1200}    
 Alle Fahrtests abgeschlossen.
+
+UzK API
+https://chat.kiconnect.nrw/api/v1
+Schlüsselname: EEB
+Schlüssel: 6a3baadb23748c4d26041fd0:A/rKYKQ9mBRcRvk5paOEkvY7zdB7vBATGVCMvqBhnmM=
