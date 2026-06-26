@@ -13,9 +13,9 @@ PORT = 8080
 
 # Sicherheitslimits
 MIN_SPEED = 300
-MAX_SPEED = 1200
+MAX_SPEED = 2000
 MIN_DURATION_MS = 80
-MAX_DURATION_MS = 1500
+MAX_DURATION_MS = 5000
 
 # Grobe Kalibrierung:
 # Wie viele Millisekunden braucht der Rover ungefähr pro cm?
