@@ -11,18 +11,30 @@
 
 ### Kamerasystem (`test_camera.py`)
 - Laptop kann Bilder vom Pi abrufen und speichern
-- **Nächster Schritt:** Bilder direkt an YOLO übergeben statt zu speichern
+- Bild wird über den API-Endpunkt `/camera` vom Raspberry Pi abgerufen
+- Test erfolgreich: Bild wird als `camera_test.jpg` auf dem Laptop gespeichert
 
 ### YOLO
-Erst YOLO installieren usw... Danach kann man `test_yolo_camera.py` ausführen. Man kriegt eine PNG-Datei zurück wo Objekte erkannt werden mit der Warscheinlichkeit. In yolov8n.pt ist das nochmal als Text abgebildet um es der KI zu geben später. --> In einem nächstem Schritt muss das in den LLM-Workflow rein.
+- YOLO (`yolov8n.pt`) auf dem Laptop installiert
+- `test_yolo_camera.py` lädt ein Bild über die API (`/camera`)
+- Das Bild wird direkt an YOLO übergeben
+- YOLO erkennt Objekte und gibt diese mit Wahrscheinlichkeit im Terminal aus
+- Das erkannte Bild wird als `yolo_result.jpg` gespeichert
+
+**Nächster Schritt:** Die YOLO-Ergebnisse werden direkt an den KI-Agenten (LLM) übergeben, damit der Roboter auf Basis der Objekterkennung Entscheidungen treffen kann.
 
 
 ### KI-Agent Loop (`main.py`)
-- YOLO-Features vorerst entfernt (noch nicht implementiert)
+- YOLO-Features integriert
 - LLM-Anbindung mit **Aktions-Loop** getestet
+- Aktion `look` hinzugefügt
+- Der Agent kann ein Kamerabild aufnehmen, mit YOLO analysieren und die erkannten Objekte als Text ausgeben
+- Bilder werden als `camera_latest.jpg` und `camera_latest_yolo.jpg` gespeichert
+- 
 - **Nächste Schritte:**
-  - YOLO-Objekterkennung integrieren
   - Sensordaten (Ultraschall, Infrarot) in Wahrnehmung einbinden
+  - YOLO-Ergebnisse als Wahrnehmung (`perception`) an das LLM übergeben
+  - Eventuell Methode aus main woanders hin verschieben
 
 ### Motorsteuerung & Drehungen
 - Variable Speed/Duration für flexible Bewegungen
@@ -56,7 +68,9 @@ Erst YOLO installieren usw... Danach kann man `test_yolo_camera.py` ausführen. 
 3. **Befehle eingeben:**
    ```
    Befehl> fahr gerade aus, dann rechts, dann vollgas und 180 drehen
-   ```
+   Befehl> mache ein Bild
+   Befehl> mach ein Foto
+   Befehl> was siehst du
 
 ### 🔄 Nächste Schritte
 
