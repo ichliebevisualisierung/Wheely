@@ -1,19 +1,24 @@
 """
-main.py — Der Agent-Loop (Schicht 3, Einstiegspunkt)
+main.py — Minimaler KI-Agent ohne Kamera/Feedback.
 
-Verbindet alles: Chat-Eingabe -> Wahrnehmung -> LLM -> Aktion -> wiederholen.
-Das ist der "Sense-Plan-Act"-Kern (Woche 2-3).
+Start:
+    cd laptop
+    python -m brain.main
 
-Start:  python -m brain.main
+Voraussetzung:
+    Auf dem Pi läuft:
+    sudo python3 robot_api.py
 """
+
 import sys
 import time
+from pathlib import Path
 
-# Pfad-Setup, damit die Schwester-Ordner importierbar sind
-sys.path.append("..")
+# Add laptop directory to path
+laptop_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(laptop_dir))
 
 from body.rover import Rover
-from perception.perceiver import YoloPerceiver
 from brain.llm import Brain
 from brain.actions import AVAILABLE_ACTIONS, execute
 import config
@@ -21,47 +26,62 @@ import config
 
 def run():
     rover = Rover(config.PI_IP, config.PI_PORT)
-    if not rover.is_alive():
-        print("Pi nicht erreichbar. Läuft api_server.py? Stimmt die IP in config.py?")
-        return
-
-    perceiver = YoloPerceiver(config.YOLO_MODEL, config.YOLO_MIN_CONFIDENCE)
     brain = Brain(config.LLM_MODEL)
 
-    print("Rover bereit. Gib einen Befehl (z.B. 'finde die Flasche'), 'q' zum Beenden.")
+    print("Wheely KI-Agent gestartet.")
+    print("Die KI wählt pro Befehl genau EINE Aktion aus actions.py.")
+    print("Beispiele:")
+    print("  fahr ein kleines stück vorwärts")
+    print("  fahr zurück")
+    print("  dreh dich nach links")
+    print("  stop")
+    print("Beenden mit q")
+
     while True:
         goal = input("\nBefehl> ").strip()
+
         if goal.lower() in ("q", "quit", "exit"):
-            rover.stop()
+            print("Stoppe Rover...")
+            print(rover.stop())
             break
 
-        # --- Sense-Plan-Act-Schleife für dieses Ziel ---
-        for step in range(15):  # max. 15 Schritte pro Befehl (Sicherheitsgrenze)
-            # SENSE
-            image = rover.get_camera_image()
-            perception = perceiver.perceive(image)
-            labels = [o["label"] for o in perception]
-            print(f"  [sehe] {labels}")
+        # Keine Wahrnehmung, weil Kamera/YOLO noch nicht aktiv sind
+        # kommmt später noch dazu
+        perception = []
+        history = []
+        max_steps = 10  # Sicherheitslimit
 
-            # Reflex: Hindernis sehr nah -> stoppen (Code, nicht LLM)
-            if rover.get_distance() != -1 and rover.get_distance() < 15:
-                print("  [reflex] Hindernis nah — stoppe")
+        print(f"[Ziel] {goal}")
+
+        for step in range(max_steps):
+            # PLAN: LLM wählt aus AVAILABLE_ACTIONS, kennt bisherige Schritte
+            action = brain.decide(goal, perception, AVAILABLE_ACTIONS, history)
+            print(f"[plan {step + 1}] {action}")
+
+            # Safety: ungültige oder fehlerhafte LLM-Antwort
+            if action.get("error"):
+                print("[error]", action)
                 rover.stop()
-
-            # PLAN
-            action = brain.decide(goal, perception, AVAILABLE_ACTIONS)
-            print(f"  [plan] {action}")
-
-            if action.get("name") == "done":
-                print("  [fertig] Ziel erreicht.")
                 break
 
-            # ACT
-            execute(action, rover)
+            if action.get("name") == "done":
+                print("[fertig] Ziel erreicht.")
+                break
+
+            # ACT: vorhandene execute()-Funktion aus brain/actions.py nutzen
+            try:
+                result = execute(action, rover)
+                print(f"[result] {result}")
+                history.append(action)
+                rover.stop()
+            except Exception as e:
+                print("[exception]", e)
+                rover.stop()
+                break
+
             time.sleep(0.3)
         else:
-            print("  [stop] max. Schritte erreicht.")
-            rover.stop()
+            print(f"[abbruch] Maximale Schritte ({max_steps}) erreicht.")
 
 
 if __name__ == "__main__":

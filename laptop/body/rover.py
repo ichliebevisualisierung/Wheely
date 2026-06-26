@@ -14,8 +14,19 @@ Beispiel:
 """
 
 import requests
-import numpy as np
-import cv2
+try:
+    import config
+    _MIN_SPEED = config.MIN_SPEED
+    _MIN_DURATION_MS = config.MIN_DURATION_MS
+    _MIN_TURN_SPEED = config.MIN_TURN_SPEED
+    _MIN_TURN_DURATION_MS = config.MIN_TURN_DURATION_MS
+except (ImportError, AttributeError):
+    _MIN_SPEED = 500
+    _MIN_DURATION_MS = 1000
+    _MIN_TURN_SPEED = 700
+    _MIN_TURN_DURATION_MS = 1500
+#import numpy as np
+#import cv2
 
 
 class Rover:
@@ -25,11 +36,11 @@ class Rover:
 
     # ---- Bewegung ---------------------------------------------------- #
     def _move(self, direction, distance_cm=None, speed=700, duration_ms=None):
-        payload = {"direction": direction, "speed": speed}
+        speed = max(speed, _MIN_SPEED)
+        duration_ms = max(duration_ms if duration_ms is not None else 0, _MIN_DURATION_MS)
+        payload = {"direction": direction, "speed": speed, "duration_ms": duration_ms}
         if distance_cm is not None:
             payload["distance_cm"] = distance_cm
-        if duration_ms is not None:
-            payload["duration_ms"] = duration_ms
         r = requests.post(f"{self.base}/move", json=payload, timeout=self.timeout)
         return r.json()
 
@@ -40,9 +51,13 @@ class Rover:
         return self._move("backward", distance_cm, speed, duration_ms)
 
     def left(self, distance_cm=None, speed=700, duration_ms=None):
+        speed = max(speed, _MIN_TURN_SPEED)
+        duration_ms = max(duration_ms if duration_ms is not None else 0, _MIN_TURN_DURATION_MS)
         return self._move("left", distance_cm, speed, duration_ms)
 
     def right(self, distance_cm=None, speed=700, duration_ms=None):
+        speed = max(speed, _MIN_TURN_SPEED)
+        duration_ms = max(duration_ms if duration_ms is not None else 0, _MIN_TURN_DURATION_MS)
         return self._move("right", distance_cm, speed, duration_ms)
 
     def stop(self):
@@ -73,8 +88,8 @@ class Rover:
             r = requests.get(f"{self.base}/camera", timeout=self.timeout)
             if r.status_code != 200:
                 return None
-            arr = np.frombuffer(r.content, dtype=np.uint8)
-            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            # arr = np.frombuffer(r.content, dtype=np.uint8)
+            # return cv2.imdecode(arr, cv2.IMREAD_COLOR)
         except Exception:
             return None
 
@@ -95,7 +110,7 @@ if __name__ == "__main__":
     print("Abstand:", rover.get_distance(), "cm")
     img = rover.get_camera_image()
     if img is not None:
-        cv2.imwrite("test_frame.jpg", img)
+        # cv2.imwrite("test_frame.jpg", img)
         print("Bild gespeichert: test_frame.jpg", img.shape)
     else:
         print("kein Bild bekommen")

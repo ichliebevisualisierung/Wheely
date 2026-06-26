@@ -6,11 +6,16 @@ Klar begrenzte Liste = sicherer und vorhersehbarer.
 """
 
 # Diese Liste bekommt das LLM beschrieben, daraus wählt es:
+# speed: 300 (langsam) – 2000 (max). duration_ms: 100 (kurz) – 5000 (lang).
 AVAILABLE_ACTIONS = {
-    "forward":  "Fahre vorwärts. Parameter: distance_cm",
-    "backward": "Fahre rückwärts. Parameter: distance_cm",
-    "left":     "Drehe nach links. Parameter: distance_cm (Drehbogen)",
-    "right":    "Drehe nach rechts. Parameter: distance_cm",
+    "forward":  "Fahre vorwärts. Parameter: speed (300-2000), duration_ms (100-5000)",
+    "backward": "Fahre rückwärts. Parameter: speed (300-2000), duration_ms (100-5000)",
+    "left":     "Drehe nach links (auf der Stelle). Parameter: speed (300-2000), duration_ms (100-5000)",
+    "right":    "Drehe nach rechts (auf der Stelle). Parameter: speed (300-2000), duration_ms (100-5000)",
+    "left_90":  "Drehe 90 Grad nach links (auf der Stelle) — vordefiniert.",
+    "left_180": "Drehe 180 Grad nach links (auf der Stelle) — vordefiniert.",
+    "right_90": "Drehe 90 Grad nach rechts (auf der Stelle) — vordefiniert.",
+    "right_180": "Drehe 180 Grad nach rechts (auf der Stelle) — vordefiniert.",
     "stop":     "Halte an.",
     "look":     "Mache ein Kamerabild und beschreibe, was zu sehen ist.",
     "done":     "Ziel erreicht — Aufgabe beenden.",
@@ -19,19 +24,32 @@ AVAILABLE_ACTIONS = {
 
 def execute(action, rover):
     """Führt eine vom LLM gewählte Aktion auf dem Rover aus.
-    action = {"name": "forward", "distance_cm": 30}
+    action = {"name": "forward", "speed": 700, "duration_ms": 1500}
+    oder: {"name": "right_90"} für vordefinierte Drehungen
     """
     name = action.get("name")
-    dist = action.get("distance_cm")
+    speed = action.get("speed")
+    duration_ms = action.get("duration_ms")
 
+    # Vordefinierte Drehungen
+    if name == "left_90":
+        return rover.left(speed=2000, duration_ms=600)
+    if name == "left_180":
+        return rover.left(speed=2000, duration_ms=1100)
+    if name == "right_90":
+        return rover.right(speed=2000, duration_ms=600)
+    if name == "right_180":
+        return rover.right(speed=2000, duration_ms=1100)
+    
+    # Variable Bewegungen
     if name == "forward":
-        return rover.forward(distance_cm=dist)
+        return rover.forward(speed=speed, duration_ms=duration_ms)
     if name == "backward":
-        return rover.backward(distance_cm=dist)
+        return rover.backward(speed=speed, duration_ms=duration_ms)
     if name == "left":
-        return rover.left(distance_cm=dist)
+        return rover.left(speed=speed, duration_ms=duration_ms)
     if name == "right":
-        return rover.right(distance_cm=dist)
+        return rover.right(speed=speed, duration_ms=duration_ms)
     if name == "stop":
         return rover.stop()
     # "look" und "done" werden im Agent-Loop selbst behandelt

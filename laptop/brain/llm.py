@@ -22,19 +22,26 @@ class Brain:
         )
         self.model = model
 
-    def decide(self, goal, perception, available_actions):
+    def decide(self, goal, perception, available_actions, history=None):
         """Fragt das LLM nach der nächsten Aktion.
         Gibt ein dict zurück wie {"name": "forward", "distance_cm": 30}.
+        history = Liste bereits ausgeführter Aktionen für dieses Ziel.
         """
         system = (
-            "Du steuerst einen Roboter-Rover. Du bekommst ein Ziel und eine Liste "
-            "sichtbarer Objekte. Wähle GENAU EINE nächste Aktion aus den erlaubten "
-            "Aktionen. Antworte NUR mit JSON: {\"name\": ..., \"distance_cm\": ...}."
+            "Du steuerst einen Roboter-Rover. Du bekommst ein Ziel, eine Liste "
+            "sichtbarer Objekte und bereits ausgeführte Aktionen. "
+            "Wähle GENAU EINE nächste Aktion aus den erlaubten Aktionen. "
+            "Wenn das Ziel erreicht ist, antworte mit {\"name\": \"done\"}. "
+            "Antworte NUR mit JSON: {\"name\": ..., \"speed\": ..., \"duration_ms\": ...}."
         )
+        history_part = ""
+        if history:
+            history_part = f"\nBereits ausgeführt: {json.dumps(history, ensure_ascii=False)}"
         user = (
             f"Ziel: {goal}\n"
             f"Sichtbare Objekte: {json.dumps(perception, ensure_ascii=False)}\n"
-            f"Erlaubte Aktionen: {json.dumps(available_actions, ensure_ascii=False)}\n"
+            f"Erlaubte Aktionen: {json.dumps(available_actions, ensure_ascii=False)}"
+            f"{history_part}\n"
             "Welche Aktion als Nächstes?"
         )
         resp = self.client.chat.completions.create(
