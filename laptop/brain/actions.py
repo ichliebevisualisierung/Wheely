@@ -23,27 +23,24 @@ AVAILABLE_ACTIONS = {
 
 
 def execute(action, rover):
-    """Führt eine vom LLM gewählte Aktion auf dem Rover aus."""
-
+    """Führt eine vom LLM gewählte Aktion auf dem Rover aus.
+    action = {"name": "forward", "speed": 700, "duration_ms": 1500}
+    oder: {"name": "right_90"} für vordefinierte Drehungen
+    """
     name = action.get("name")
-    speed = int(action.get("speed", 700))
-    duration_ms = int(action.get("duration_ms", 500))
+    speed = action.get("speed")
+    duration_ms = action.get("duration_ms")
 
-    speed = max(300, min(speed, 1200))
-    duration_ms = max(100, min(duration_ms, 1500))
 
     # Vordefinierte Drehungen
     if name == "left_90":
-        return rover.left(speed=1200, duration_ms=600)
-
+        return rover.left(speed=2000, duration_ms=600)
     if name == "left_180":
-        return rover.left(speed=1200, duration_ms=1100)
-
+        return rover.left(speed=2000, duration_ms=1100)
     if name == "right_90":
-        return rover.right(speed=1200, duration_ms=600)
-
+        return rover.right(speed=2000, duration_ms=600)
     if name == "right_180":
-        return rover.right(speed=1200, duration_ms=1100)
+        return rover.right(speed=2000, duration_ms=1100)
 
     # Variable Bewegungen
     if name == "forward":
