@@ -1,7 +1,5 @@
 # Wheely — Projektfortschritt
 
----
-
 ## 26.06.2026 — Fortschritt Dokumentation
 
 
@@ -14,6 +12,10 @@
 ### Kamerasystem (`test_camera.py`)
 - Laptop kann Bilder vom Pi abrufen und speichern
 - **Nächster Schritt:** Bilder direkt an YOLO übergeben statt zu speichern
+
+### YOLO
+Erst YOLO installieren usw... Danach kann man `test_yolo_camera.py` ausführen. Man kriegt eine PNG-Datei zurück wo Objekte erkannt werden mit der Warscheinlichkeit. In yolov8n.pt ist das nochmal als Text abgebildet um es der KI zu geben später. --> In einem nächstem Schritt muss das in den LLM-Workflow rein.
+
 
 ### KI-Agent Loop (`main.py`)
 - YOLO-Features vorerst entfernt (noch nicht implementiert)
@@ -62,3 +64,4 @@
 - [ ] Sensordaten (Ultraschall, Infrarot) auslesen und KI geben
 - [ ] Sensor-Feedback in Agent-Loop integrieren
 - [ ] Weiterführender LLM-Prompt für Wahrnehmung optimieren 
+
