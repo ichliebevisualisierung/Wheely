@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import time
+from camera import Camera
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -22,7 +23,15 @@ MAX_DURATION_MS = 1500
 MS_PER_CM = 80
 
 hardware_lock = threading.Lock()
+camera_lock = threading.Lock()
+camera = None
 
+def get_camera():
+    global camera
+    if camera is None:
+        camera = Camera()
+        camera.start_stream()
+    return camera
 
 def clamp(value, min_value, max_value):
     value = int(value)
@@ -103,6 +112,30 @@ class RobotAPI(BaseHTTPRequestHandler):
             return {}
         raw = self.rfile.read(length).decode("utf-8")
         return json.loads(raw)
+    
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/health":
+            self.send_json(200, {"ok": True})
+            return
+
+        if path == "/camera":
+            try:
+                with camera_lock:
+                    cam = get_camera()
+                    frame = cam.get_frame()
+
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(frame)))
+                self.end_headers()
+                self.wfile.write(frame)
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+            return
+
+        self.send_json(404, {"ok": False, "error": "unknown endpoint"})
 
     def do_POST(self):
         path = urlparse(self.path).path
