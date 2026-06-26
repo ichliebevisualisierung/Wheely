@@ -6,3 +6,25 @@ test_frame.jpg
 .venv/
 venv/
 yolov8n.pt
+
+# Docker
+.docker/
+docker-compose.override.yml
+.dockerignore
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+.docker/
+docker-compose.override.yml
+
+# Logs & Temp
+*.log
+*.tmp
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
