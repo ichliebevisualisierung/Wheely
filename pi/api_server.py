@@ -38,8 +38,9 @@ HOST = "0.0.0.0"
 PORT = 8080
 
 # Sicherheitslimits (am Rover empirisch ermittelt)
-MIN_SPEED = 300
+MIN_SPEED = 1000
 MAX_SPEED = 2000
+DEFAULT_SPEED = 1500
 MIN_DURATION_MS = 80
 MAX_DURATION_MS = 5000
 
@@ -114,7 +115,7 @@ def stop_motors():
             pass
 
 
-def move(direction, speed=700, duration_ms=None, distance_cm=None):
+def move(direction, speed=DEFAULT_SPEED, duration_ms=None, distance_cm=None):
     speed = clamp(speed, MIN_SPEED, MAX_SPEED)
 
     if duration_ms is None:
@@ -224,7 +225,7 @@ class RobotAPI(BaseHTTPRequestHandler):
             try:
                 body = self.read_json()
                 direction = body.get("direction")
-                speed = body.get("speed", 700)
+                speed = body.get("speed", DEFAULT_SPEED)
                 duration_ms = body.get("duration_ms")
                 distance_cm = body.get("distance_cm")
 
