@@ -1,5 +1,5 @@
 import time
-from parameter import ParameterManager
+from hardware.parameter import ParameterManager
 
 class gpiozero_ultrasonic:
     def __init__(self, trigger_pin=27, echo_pin=22):
