@@ -2,80 +2,96 @@
 """
 api_server.py — KÖRPER (läuft auf dem Raspberry Pi)
 
-HTTP/JSON-API, die den Rover steuert. Baut auf der ursprünglichen Idee
-des Teammitglieds (robot_api.py) auf und erweitert sie um Kamera und Sensoren,
-sodass Freenoves server.py komplett wegfallen kann.
+HTTP/JSON-API, die den Rover steuert.
+Basiert auf der robot_api.py des Teams, erweitert um Sensor-Endpunkte.
 
 WICHTIG: Es darf immer nur DIESES Programm die Hardware steuern.
          Freenoves server.py NICHT gleichzeitig laufen lassen!
 
 Endpunkte:
-    POST /move      {"direction": "forward", "distance_cm": 30, "speed": 700}
-    POST /stop      -> Motoren aus
-    GET  /distance  -> {"distance_cm": 42.0}        (Ultraschall)
-    GET  /line      -> {"left": 0, "middle": 1, "right": 0}  (Infrarot)
+    POST /move       {"direction": "forward", "distance_cm": 30, "speed": 700}
+                     oder: {"direction": "forward", "duration_ms": 500, "speed": 700}
+    POST /stop       -> Motoren aus
+    GET  /distance   -> {"ok": true, "distance_cm": 42.0}     (Ultraschall)
+    GET  /line       -> {"ok": true, "raw": ...}              (Infrarot)
     GET  /camera     -> JPEG-Bild (single frame, für YOLO)
-    GET  /health    -> {"ok": true}                 (Lebenszeichen)
+    GET  /health     -> {"ok": true}                          (Lebenszeichen)
 
 Start auf dem Pi:
-    pip install flask picamera2
     python api_server.py
 """
 
+import json
 import time
 import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
 
-from flask import Flask, request, jsonify, Response
-
-# --- Freenove-Treiber (liegen in pi/hardware/, Klassennamen wie im Repo) ---
-# Hinweis: Diese Imports funktionieren nur AUF dem Pi mit angeschlossener Hardware.
-from hardware.motor import tankMotor
-from hardware.ultrasonic import gpiozero_ultrasonic
-from hardware.infrared import Infrared
-from hardware.camera import Camera
+# Hardware-Treiber von Freenove (liegen in pi/hardware/ daneben)
+from motor import tankMotor
+from camera import Camera
+from ultrasonic import gpiozero_ultrasonic
+from infrared import Infrared
 
 
-# ---------------------------------------------------------------------- #
-#  Konfiguration & Sicherheitslimits  (aus robot_api.py übernommen)
-# ---------------------------------------------------------------------- #
 HOST = "0.0.0.0"
 PORT = 8080
 
+# Sicherheitslimits (am Rover empirisch ermittelt)
 MIN_SPEED = 300
-MAX_SPEED = 1200
+MAX_SPEED = 2000
 MIN_DURATION_MS = 80
-MAX_DURATION_MS = 1500
+MAX_DURATION_MS = 5000
 
-# Grobe Kalibrierung — MUSS am echten Rover ausgemessen werden!
-# "Wie viele Millisekunden fährt der Rover pro cm?"
+# Grobe Kalibrierung: wie viele Millisekunden pro cm?
+# TODO: am echten Rover ausmessen und anpassen
 MS_PER_CM = 80
 
-# Ein Lock, damit nie zwei Befehle gleichzeitig die Hardware anfassen.
+
+# ---------------------------------------------------------------------- #
+#  Hardware-Locks & Lazy-Singletons
+#  (Kamera + Sensoren werden bei erstem Zugriff EINMAL erstellt)
+# ---------------------------------------------------------------------- #
 hardware_lock = threading.Lock()
+camera_lock = threading.Lock()
+sensor_lock = threading.Lock()
+
+_camera = None
+_ultrasonic = None
+_infrared = None
 
 
-# ---------------------------------------------------------------------- #
-#  Hardware-Singletons
-#  Wir erstellen jeden Treiber EINMAL und halten ihn offen, statt ihn
-#  (wie im Prototyp) bei jedem Move neu zu erzeugen. Das ist schneller
-#  und stabiler.
-# ---------------------------------------------------------------------- #
-motor = tankMotor()
-ultrasonic = gpiozero_ultrasonic()
-infrared = Infrared()
-camera = Camera()
-camera.start_stream()   # JPEG-Stream starten -> get_frame() liefert dann Bilder
+def get_camera():
+    global _camera
+    if _camera is None:
+        _camera = Camera()
+        _camera.start_stream()
+    return _camera
+
+
+def get_ultrasonic():
+    global _ultrasonic
+    if _ultrasonic is None:
+        _ultrasonic = gpiozero_ultrasonic()
+    return _ultrasonic
+
+
+def get_infrared():
+    global _infrared
+    if _infrared is None:
+        _infrared = Infrared()
+    return _infrared
 
 
 # ---------------------------------------------------------------------- #
 #  Hilfsfunktionen
 # ---------------------------------------------------------------------- #
-def clamp(value, lo, hi):
-    return max(lo, min(hi, int(value)))
+def clamp(value, min_value, max_value):
+    value = int(value)
+    return max(min_value, min(max_value, value))
 
 
 def motor_values(direction, speed):
-    """Übersetzt Richtung + Tempo in (links, rechts) Kettenwerte."""
     if direction == "forward":
         return speed, speed
     if direction == "backward":
@@ -84,15 +100,21 @@ def motor_values(direction, speed):
         return -speed, speed
     if direction == "right":
         return speed, -speed
-    raise ValueError("direction muss sein: forward, backward, left, right")
+    raise ValueError("direction must be: forward, backward, left, right")
 
 
 def stop_motors():
-    motor.setMotorModel(0, 0)
+    motor = tankMotor()
+    try:
+        motor.setMotorModel(0, 0)
+    finally:
+        try:
+            motor.close()
+        except Exception:
+            pass
 
 
-def do_move(direction, speed=700, duration_ms=None, distance_cm=None):
-    """Führt eine Bewegung aus. Zeit ODER Distanz (Distanz hat Vorrang)."""
+def move(direction, speed=700, duration_ms=None, distance_cm=None):
     speed = clamp(speed, MIN_SPEED, MAX_SPEED)
 
     if duration_ms is None:
@@ -100,13 +122,22 @@ def do_move(direction, speed=700, duration_ms=None, distance_cm=None):
             duration_ms = int(float(distance_cm) * MS_PER_CM)
         else:
             duration_ms = 300
+
     duration_ms = clamp(duration_ms, MIN_DURATION_MS, MAX_DURATION_MS)
 
     left, right = motor_values(direction, speed)
+    motor = tankMotor()
 
-    motor.setMotorModel(left, right)
-    time.sleep(duration_ms / 1000)
-    motor.setMotorModel(0, 0)
+    try:
+        motor.setMotorModel(left, right)
+        time.sleep(duration_ms / 1000)
+        motor.setMotorModel(0, 0)
+    finally:
+        try:
+            motor.setMotorModel(0, 0)
+            motor.close()
+        except Exception:
+            pass
 
     return {
         "direction": direction,
@@ -118,101 +149,128 @@ def do_move(direction, speed=700, duration_ms=None, distance_cm=None):
 
 
 # ---------------------------------------------------------------------- #
-#  Flask-App + Endpunkte
+#  HTTP-Handler
 # ---------------------------------------------------------------------- #
-app = Flask(__name__)
+class RobotAPI(BaseHTTPRequestHandler):
+    def send_json(self, status, payload):
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length == 0:
+            return {}
+        raw = self.rfile.read(length).decode("utf-8")
+        return json.loads(raw)
 
-@app.post("/move")
-def move_endpoint():
-    body = request.get_json(silent=True) or {}
-    direction = body.get("direction")
-    speed = body.get("speed", 700)
-    duration_ms = body.get("duration_ms")
-    distance_cm = body.get("distance_cm")
+    # ---- GET-Endpunkte ------------------------------------------------ #
+    def do_GET(self):
+        path = urlparse(self.path).path
 
-    if direction not in ("forward", "backward", "left", "right"):
-        return jsonify(ok=False, error="ungültige direction"), 400
+        if path == "/health":
+            self.send_json(200, {"ok": True})
+            return
 
-    try:
-        with hardware_lock:
-            result = do_move(direction, speed, duration_ms, distance_cm)
-        return jsonify(ok=True, result=result)
-    except Exception as e:
-        with hardware_lock:
-            stop_motors()
-        return jsonify(ok=False, error=str(e)), 400
+        if path == "/camera":
+            try:
+                with camera_lock:
+                    frame = get_camera().get_frame()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(frame)))
+                self.end_headers()
+                self.wfile.write(frame)
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+            return
 
+        if path == "/distance":
+            try:
+                with sensor_lock:
+                    dist = get_ultrasonic().get_distance()
+                self.send_json(200, {"ok": True, "distance_cm": dist})
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+            return
 
-@app.post("/stop")
-def stop_endpoint():
-    try:
-        with hardware_lock:
-            stop_motors()
-        return jsonify(ok=True, result="stopped")
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
+        if path == "/line":
+            try:
+                with sensor_lock:
+                    ir = get_infrared()
+                    # TODO: Methodennamen an echte infrared.py anpassen
+                    # Häufige Varianten: read_all(), read(), get_values()
+                    if hasattr(ir, "read_all"):
+                        raw = ir.read_all()
+                    elif hasattr(ir, "read"):
+                        raw = ir.read()
+                    else:
+                        raw = None
+                self.send_json(200, {"ok": True, "raw": raw})
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+            return
 
+        self.send_json(404, {"ok": False, "error": "unknown endpoint"})
 
-@app.get("/distance")
-def distance_endpoint():
-    """Ultraschall-Abstand in cm."""
-    try:
-        with hardware_lock:
-            dist = ultrasonic.get_distance()
-        return jsonify(ok=True, distance_cm=dist)
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
+    # ---- POST-Endpunkte ----------------------------------------------- #
+    def do_POST(self):
+        path = urlparse(self.path).path
 
+        if path == "/move":
+            try:
+                body = self.read_json()
+                direction = body.get("direction")
+                speed = body.get("speed", 700)
+                duration_ms = body.get("duration_ms")
+                distance_cm = body.get("distance_cm")
 
-@app.get("/line")
-def line_endpoint():
-    """Infrarot-Linienfolger: drei Sensoren (links, mitte, rechts).
-    Hinweis: genaue Methode in infrared.py prüfen — ggf. anpassen."""
-    try:
-        with hardware_lock:
-            # Annahme: Infrared hat eine read_all()-artige Methode.
-            # MUSS am Rover gegen die echte infrared.py verifiziert werden.
-            values = infrared.read_all() if hasattr(infrared, "read_all") else None
-        return jsonify(ok=True, raw=values)
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
+                with hardware_lock:
+                    result = move(
+                        direction=direction,
+                        speed=speed,
+                        duration_ms=duration_ms,
+                        distance_cm=distance_cm,
+                    )
+                self.send_json(200, {"ok": True, "result": result})
+            except Exception as e:
+                try:
+                    stop_motors()
+                except Exception:
+                    pass
+                self.send_json(400, {"ok": False, "error": str(e)})
+            return
 
+        if path == "/stop":
+            try:
+                with hardware_lock:
+                    stop_motors()
+                self.send_json(200, {"ok": True, "result": "stopped"})
+            except Exception as e:
+                self.send_json(500, {"ok": False, "error": str(e)})
+            return
 
-@app.get("/camera")
-def camera_endpoint():
-    """Liefert EIN aktuelles JPEG-Bild — ideal für YOLO auf dem Laptop."""
-    try:
-        frame = camera.get_frame()   # JPEG-Bytes (aus camera.py)
-        return Response(frame, mimetype="image/jpeg")
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
-
-
-@app.get("/health")
-def health_endpoint():
-    return jsonify(ok=True, message="rover api up")
+        self.send_json(404, {"ok": False, "error": "unknown endpoint"})
 
 
 # ---------------------------------------------------------------------- #
 #  Start
 # ---------------------------------------------------------------------- #
 def main():
-    print(f"Rover-API läuft auf http://{HOST}:{PORT}")
-    print("Endpunkte: POST /move, POST /stop, GET /distance, GET /line, GET /camera, GET /health")
+    print(f"Robot API läuft auf Port {PORT}")
+    print("Endpunkte: POST /move, POST /stop,")
+    print("           GET  /distance, GET /line, GET /camera, GET /health")
     print("Beenden mit Ctrl+C")
+
+    server = ThreadingHTTPServer((HOST, PORT), RobotAPI)
     try:
-        # threaded=True: mehrere Anfragen gleichzeitig (z.B. Kamera + Move)
-        app.run(host=HOST, port=PORT, threaded=True)
+        server.serve_forever()
     except KeyboardInterrupt:
-        pass
-    finally:
-        print("Stoppe Rover, räume auf …")
-        try:
-            stop_motors()
-            camera.close()
-        except Exception:
-            pass
+        print("Stoppe API...")
+        stop_motors()
 
 
 if __name__ == "__main__":

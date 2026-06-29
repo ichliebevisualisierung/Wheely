@@ -1,138 +1,149 @@
 """
-main.py — Minimaler KI-Agent ohne Kamera/Feedback.
+main.py — Der Agent-Loop (Schicht 3, Einstiegspunkt)
+
+Verbindet Körper (Rover), Augen (Perceiver) und Verstand (Brain) zu einem
+agentischen Sense-Plan-Act-Loop.
 
 Start:
     cd laptop
     python -m brain.main
 
 Voraussetzung:
-    Auf dem Pi läuft:
-    sudo python3 robot_api.py
+    Auf dem Pi läuft api_server.py.
+    .env-Datei mit LLM_BASE_URL und LLM_API_KEY existiert.
 """
 
 import sys
 import time
 from pathlib import Path
-import requests
-import cv2
-import numpy as np
 
-# Add laptop directory to path
+import cv2
+
+# laptop/ in den Python-Pfad hängen, damit die Geschwister-Ordner importierbar sind
 laptop_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(laptop_dir))
 
-from ultralytics import YOLO
 from body.rover import Rover
+from perception.perceiver import YoloPerceiver
 from brain.llm import Brain
 from brain.actions import AVAILABLE_ACTIONS, execute
 import config
 
-yolo_model = YOLO("yolov8n.pt")
-def take_picture_and_analyze():
-    url = f"http://{config.PI_IP}:{config.PI_PORT}/camera"
 
+# ---------------------------------------------------------------------- #
+#  Hilfsfunktion: "look" — Bild + Wahrnehmung + Debug-Speichern
+# ---------------------------------------------------------------------- #
+def do_look(rover, perceiver):
+    """Macht ein Foto, lässt es durch YOLO laufen, speichert Debug-Bilder.
+
+    Gibt die Liste erkannter Objekte zurück (Format aus Perceiver-Schnittstelle).
+    Diese Liste geht im nächsten Schritt als 'perception' ans LLM.
+    """
     print("[look] Mache Bild...")
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    image = rover.get_camera_image()
+    if image is None:
+        print("[look] Kein Bild bekommen — leere Wahrnehmung.")
+        return []
 
-    with open("camera_latest.jpg", "wb") as f:
-        f.write(response.content)
+    cv2.imwrite("camera_latest.jpg", image)
 
-    image_array = np.frombuffer(response.content, dtype=np.uint8)
-    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    objects = perceiver.perceive(image)
 
-    results = yolo_model(image, verbose=False)
-
-    seen = []
-
-    for result in results:
-        for box in result.boxes:
-            confidence = float(box.conf[0])
-            if confidence < 0.4:
-                continue
-
-            cls_id = int(box.cls[0])
-            label = yolo_model.names[cls_id]
-            seen.append((label, confidence))
-
-    annotated = results[0].plot()
-    cv2.imwrite("camera_latest_yolo.jpg", annotated)
-
-    if not seen:
+    if not objects:
         print("[look] Ich sehe nichts eindeutig.")
     else:
         print("[look] Ich sehe:")
-        for label, confidence in seen:
-            print(f"  - {label} ({confidence:.2f})")
+        for obj in objects:
+            print(f"  - {obj['label']} (confidence {obj['confidence']:.2f})")
 
-    print("[look] Originalbild: camera_latest.jpg")
-    print("[look] YOLO-Bild: camera_latest_yolo.jpg")
+    # Optional: annotiertes Bild speichern (mit Boxen drumrum)
+    try:
+        annotated = image.copy()
+        for obj in objects:
+            x1, y1, x2, y2 = [int(v) for v in obj["box"]]
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(annotated, f"{obj['label']} {obj['confidence']:.2f}",
+                        (x1, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 255, 0), 1)
+        cv2.imwrite("camera_latest_yolo.jpg", annotated)
+    except Exception as e:
+        print(f"[look] Annotierung fehlgeschlagen: {e}")
 
-    return seen
+    return objects
 
+
+# ---------------------------------------------------------------------- #
+#  Hauptschleife
+# ---------------------------------------------------------------------- #
 def run():
     rover = Rover(config.PI_IP, config.PI_PORT)
+    perceiver = YoloPerceiver(config.YOLO_MODEL, config.YOLO_MIN_CONFIDENCE)
     brain = Brain(config.LLM_MODEL)
 
     print("Wheely KI-Agent gestartet.")
-    print("Die KI wählt pro Befehl genau EINE Aktion aus actions.py.")
-    print("Beispiele:")
+    print("Die KI wählt pro Schritt genau EINE Aktion aus actions.py.")
+    print()
+    print("Beispiele für Bewegung:")
     print("  fahr ein kleines stück vorwärts")
-    print("  fahr zurück")
     print("  dreh dich nach links")
-    print("  stop")
-    print("Beispiele:")
-    print("  mache ein Bild")
-    print("  mach ein Foto")
-    print("  starte die Kamera")
+    print("  fahr zurück und stop")
+    print()
+    print("Beispiele für Wahrnehmung:")
     print("  was siehst du")
+    print("  finde die flasche")
+    print("  mach ein foto")
+    print()
     print("Beenden mit q")
-    
 
     while True:
         goal = input("\nBefehl> ").strip()
-
         if goal.lower() in ("q", "quit", "exit"):
             print("Stoppe Rover...")
-            print(rover.stop())
+            rover.stop()
             break
+        if not goal:
+            continue
 
-        # Keine Wahrnehmung, weil Kamera/YOLO noch nicht aktiv sind
-        # kommmt später noch dazu
+        # Pro Befehl: frische Wahrnehmung & History, Sicherheitslimit für Schritte
         perception = []
         history = []
-        max_steps = 10  # Sicherheitslimit
-
+        max_steps = 10
         print(f"[Ziel] {goal}")
 
         for step in range(max_steps):
-            # PLAN: LLM wählt aus AVAILABLE_ACTIONS, kennt bisherige Schritte
+            # ---- PLAN ---------------------------------------------------
             action = brain.decide(goal, perception, AVAILABLE_ACTIONS, history)
             print(f"[plan {step + 1}] {action}")
 
-            # Safety: ungültige oder fehlerhafte LLM-Antwort
+            # Sicherheitsnetz: unlesbare/fehlerhafte LLM-Antwort
             if action.get("error"):
                 print("[error]", action)
                 rover.stop()
                 break
 
-            if action.get("name") == "done":
+            name = action.get("name")
+
+            # Ziel erreicht
+            if name == "done":
                 print("[fertig] Ziel erreicht.")
                 break
-            if action.get("name") == "look":
-                seen = take_picture_and_analyze()
-                history.append({
-                    "name": "look",
-                    "seen": seen
-                })
-                break
 
-            # ACT: vorhandene execute()-Funktion aus brain/actions.py nutzen
+            # ---- SENSE (look) ------------------------------------------
+            # Bewusst KEIN break hier — der Agent soll nach einem Blick
+            # weitermachen können (z.B. erst schauen, dann fahren).
+            if name == "look":
+                perception = do_look(rover, perceiver)
+                history.append({"name": "look",
+                                "seen": [{"label": o["label"],
+                                          "confidence": round(o["confidence"], 2)}
+                                         for o in perception]})
+                continue
+
+            # ---- ACT ---------------------------------------------------
             try:
                 result = execute(action, rover)
                 print(f"[result] {result}")
                 history.append(action)
-                rover.stop()
             except Exception as e:
                 print("[exception]", e)
                 rover.stop()
@@ -141,6 +152,7 @@ def run():
             time.sleep(0.3)
         else:
             print(f"[abbruch] Maximale Schritte ({max_steps}) erreicht.")
+            rover.stop()
 
 
 if __name__ == "__main__":
