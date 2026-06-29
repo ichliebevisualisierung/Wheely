@@ -28,10 +28,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 # Hardware-Treiber von Freenove (liegen in pi/hardware/ daneben)
-from motor import tankMotor
-from camera import Camera
-from ultrasonic import gpiozero_ultrasonic
-from infrared import Infrared
+from hardware.motor import tankMotor
+from hardware.camera import Camera
+from hardware.ultrasonic import gpiozero_ultrasonic
+from hardware.infrared import Infrared
 
 
 HOST = "0.0.0.0"
