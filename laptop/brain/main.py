@@ -31,7 +31,7 @@ import config
 
 # Ultraschall-Schwellenwert: ab hier greift der Reflex (in cm).
 # Alles darunter = zu nah, sofort stoppen, nicht ans LLM delegieren.
-OBSTACLE_THRESHOLD_CM = 15
+OBSTACLE_THRESHOLD_CM = 30
 
 
 # ---------------------------------------------------------------------- #
