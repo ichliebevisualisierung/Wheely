@@ -14,6 +14,8 @@ Beispiel:
 """
 
 import requests
+import numpy as np
+import cv2
 try:
     import config
     _MIN_SPEED = config.MIN_SPEED
@@ -87,10 +89,16 @@ class Rover:
         try:
             r = requests.get(f"{self.base}/camera", timeout=self.timeout)
             if r.status_code != 200:
+                print("HTTP:", r.status_code)
                 return None
-            # arr = np.frombuffer(r.content, dtype=np.uint8)
-            # return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        except Exception:
+            arr = np.frombuffer(r.content, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is None:
+                print("OpenCV konnte das JPEG nicht dekodieren.")
+                return None
+            return img
+        except Exception as e:
+            print("Camera Exception:", e)
             return None
 
     # ---- Health ------------------------------------------------------ #
