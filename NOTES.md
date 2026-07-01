@@ -10,7 +10,7 @@
 - ✅ Bewegung (vorwärts, rückwärts, Drehungen inkl. Presets für 90°/180°)
 - ✅ Kamera (JPEG-Bild über HTTP abrufbar, YOLO-Erkennung auf dem Laptop)
 - ✅ Ultraschall (Distanzmessung, wird bei jedem Agent-Schritt gelesen)
-- ✅ Ultraschall-Reflex (Hindernis < 15 cm → automatischer Stopp, ohne LLM)
+- ✅ Ultraschall-Reflex (Hindernis < 30 cm → automatischer Stopp, ohne LLM)
 - ✅ LLM-Agent-Loop (Sense-Plan-Act mit Uni-Modell über OpenAI-kompatible API)
 - ✅ Saubere Repo-Struktur (pi/ für Rover, laptop/ für Gehirn, klare Schichten)
 
@@ -161,4 +161,4 @@ Der Pi ist der Körper (HTTP-API steuert Hardware), der Laptop ist das Gehirn (Y
 ### Ultraschall-Verhalten
 - Wird bei JEDEM Agent-Schritt gelesen, nicht nur bei `look`
 - Wert geht als `{"type": "ultrasonic", "info": "Hindernis XX cm voraus"}` ans LLM
-- Reflex-Schwelle: 15 cm → automatischer Stopp bei `forward`, ohne LLM zu fragen
+- Reflex-Schwelle: 30 cm → automatischer Stopp bei `forward`, ohne LLM zu fragen
