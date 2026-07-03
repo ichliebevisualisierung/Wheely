@@ -18,6 +18,9 @@ import time
 from pathlib import Path
 
 import cv2
+import os
+import base64
+from openai import OpenAI
 
 # laptop/ in den Python-Pfad hängen, damit die Geschwister-Ordner importierbar sind
 laptop_dir = Path(__file__).parent.parent
@@ -84,6 +87,42 @@ def do_look(rover, perceiver):
 
     return objects, distance
 
+def do_look_mistral(rover):
+    print("[look-mistral] Mache Bild...")
+    image = rover.get_camera_image()
+    distance = rover.get_distance()
+
+    if image is None:
+        print("[look-mistral] Kein Bild bekommen.")
+        return [], distance
+
+    cv2.imwrite("camera_latest.jpg", image)
+
+    _, buffer = cv2.imencode(".jpg", image)
+    image_base64 = base64.b64encode(buffer).decode("utf-8")
+
+    client = OpenAI(
+        base_url=os.getenv("LLM_BASE_URL"),
+        api_key=os.getenv("LLM_API_KEY"),
+    )
+
+    resp = client.chat.completions.create(
+        model=config.MISTRAL_VISION_MODEL,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Beschreibe kurz, was auf dem Roboter-Kamerabild zu sehen ist."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+            ]
+        }],
+        temperature=0.2,
+    )
+
+    description = resp.choices[0].message.content.strip()
+    print("[look-mistral] Ich sehe:")
+    print(description)
+
+    return [{"type": "vision_description", "description": description}], distance
 
 def build_perception_for_llm(objects, distance_cm):
     """Baut die Wahrnehmung zusammen, die ans LLM geht.
@@ -119,6 +158,13 @@ def run():
     rover = Rover(config.PI_IP, config.PI_PORT)
     perceiver = YoloPerceiver(config.YOLO_MODEL, config.YOLO_MIN_CONFIDENCE)
     brain = Brain(config.LLM_MODEL)
+    print("Vision-Modell auswählen:")
+    print("1 - YOLO")
+    print("2 - Mistral Vision")
+    choice = input("> ").strip()
+
+    config.VISION_MODE = "mistral" if choice == "2" else "yolo"
+    print(f"Vision-Modus: {config.VISION_MODE}")
 
     print("Wheely KI-Agent gestartet.")
     print("Die KI wählt pro Schritt genau EINE Aktion aus actions.py.")
@@ -185,13 +231,17 @@ def run():
 
             # ---- SENSE (look) ------------------------------------------
             if name == "look":
-                objects, last_distance = do_look(rover, perceiver)
-                perception = build_perception_for_llm(objects, last_distance)
-                history.append({"name": "look",
-                                "seen": [{"label": o["label"],
-                                          "confidence": round(o["confidence"], 2)}
-                                         for o in objects],
-                                "distance_cm": last_distance})
+                if config.VISION_MODE == "mistral":
+                    perception, last_distance = do_look_mistral(rover)
+                else:
+                    objects, last_distance = do_look(rover, perceiver)
+                    perception = build_perception_for_llm(objects, last_distance)
+
+                history.append({
+                    "name": "look",
+                    "perception": perception,
+                    "distance_cm": last_distance
+                })
                 continue
 
             # ---- REFLEX: Hindernis-Check vor Vorwärtsbewegung ----------
