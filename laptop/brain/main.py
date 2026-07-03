@@ -9,7 +9,7 @@ Start:
     python -m brain.main
 
 Voraussetzung:
-    Auf dem Pi läuft api_server.py.
+    Auf dem Pi läuft api_server.py bzw. eure robot_api.py mit den passenden Endpunkten.
     .env-Datei mit LLM_BASE_URL und LLM_API_KEY existiert.
 """
 
@@ -27,6 +27,7 @@ from body.rover import Rover
 from perception.perceiver import YoloPerceiver
 from brain.llm import Brain
 from brain.actions import AVAILABLE_ACTIONS, execute
+from brain.memory import SessionMemory
 import config
 
 # Ultraschall-Schwellenwert: ab hier greift der Reflex (in cm).
@@ -112,6 +113,19 @@ def build_perception_for_llm(objects, distance_cm):
     return perception
 
 
+def memory_seen_objects(objects):
+    """Reduziert YOLO-Objekte auf ein kompaktes, JSON-lesbares Memory-Format."""
+    return [
+        {
+            "label": obj["label"],
+            "confidence": round(obj["confidence"], 2),
+            "x": round(obj.get("x", 0), 1),
+            "y": round(obj.get("y", 0), 1),
+        }
+        for obj in objects
+    ]
+
+
 # ---------------------------------------------------------------------- #
 #  Hauptschleife
 # ---------------------------------------------------------------------- #
@@ -119,6 +133,7 @@ def run():
     rover = Rover(config.PI_IP, config.PI_PORT)
     perceiver = YoloPerceiver(config.YOLO_MODEL, config.YOLO_MIN_CONFIDENCE)
     brain = Brain(config.LLM_MODEL)
+    memory = SessionMemory()
 
     print("Wheely KI-Agent gestartet.")
     print("Die KI wählt pro Schritt genau EINE Aktion aus actions.py.")
@@ -150,6 +165,7 @@ def run():
         history = []
         max_steps = 10
         print(f"[Ziel] {goal}")
+        memory.start_goal(goal)
 
         for step in range(max_steps):
             # ---- SENSE (Ultraschall, jeder Schritt) ---------------------
@@ -167,7 +183,13 @@ def run():
                 print(f"[sense] Ultraschall: {last_distance} cm")
 
             # ---- PLAN ---------------------------------------------------
-            action = brain.decide(goal, perception, AVAILABLE_ACTIONS, history)
+            action = brain.decide(
+                goal,
+                perception,
+                AVAILABLE_ACTIONS,
+                history,
+                memory_context=memory.prompt_context(),
+            )
             print(f"[plan {step + 1}] {action}")
 
             # Sicherheitsnetz: unlesbare/fehlerhafte LLM-Antwort
@@ -181,17 +203,31 @@ def run():
             # Ziel erreicht
             if name == "done":
                 print("[fertig] Ziel erreicht.")
+                memory.remember({
+                    "step": step + 1,
+                    "type": "done",
+                    "action": action,
+                })
                 break
 
             # ---- SENSE (look) ------------------------------------------
             if name == "look":
                 objects, last_distance = do_look(rover, perceiver)
                 perception = build_perception_for_llm(objects, last_distance)
-                history.append({"name": "look",
-                                "seen": [{"label": o["label"],
-                                          "confidence": round(o["confidence"], 2)}
-                                         for o in objects],
-                                "distance_cm": last_distance})
+
+                look_event = {
+                    "step": step + 1,
+                    "type": "look",
+                    "action": action,
+                    "seen": memory_seen_objects(objects),
+                    "distance_cm": last_distance,
+                }
+                history.append({
+                    "name": "look",
+                    "seen": look_event["seen"],
+                    "distance_cm": last_distance,
+                })
+                memory.remember(look_event)
                 continue
 
             # ---- REFLEX: Hindernis-Check vor Vorwärtsbewegung ----------
@@ -201,12 +237,20 @@ def run():
                 if dist != -1 and dist < OBSTACLE_THRESHOLD_CM:
                     print(f"[reflex] Hindernis bei {dist} cm — zu nah! Stoppe.")
                     rover.stop()
-                    # Dem LLM mitteilen, was passiert ist
+
+                    reflex_event = {
+                        "step": step + 1,
+                        "type": "reflex_stop",
+                        "blocked_action": action,
+                        "distance_cm": dist,
+                        "reason": f"Hindernis bei {dist} cm erkannt, Vorwärtsbewegung abgebrochen",
+                    }
                     history.append({
                         "name": "reflex_stop",
-                        "reason": f"Hindernis bei {dist} cm erkannt, Vorwärtsbewegung abgebrochen"
+                        "reason": reflex_event["reason"],
                     })
-                    # Wahrnehmung aktualisieren, damit LLM beim nächsten Plan Bescheid weiß
+                    memory.remember(reflex_event)
+
                     perception = build_perception_for_llm([], dist)
                     continue
 
@@ -214,16 +258,34 @@ def run():
             try:
                 result = execute(action, rover)
                 print(f"[result] {result}")
+
+                memory.remember({
+                    "step": step + 1,
+                    "type": "action",
+                    "action": action,
+                    "result": result,
+                })
                 history.append(action)
             except Exception as e:
                 print("[exception]", e)
                 rover.stop()
+                memory.remember({
+                    "step": step + 1,
+                    "type": "exception",
+                    "action": action,
+                    "error": str(e),
+                })
                 break
 
             time.sleep(0.3)
         else:
             print(f"[abbruch] Maximale Schritte ({max_steps}) erreicht.")
             rover.stop()
+            memory.remember({
+                "step": max_steps,
+                "type": "max_steps_reached",
+                "reason": f"Maximale Schritte ({max_steps}) erreicht",
+            })
 
 
 if __name__ == "__main__":

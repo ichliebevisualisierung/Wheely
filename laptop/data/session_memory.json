@@ -1,0 +1,48 @@
+{
+  "goal": "sage mir was du siehst ohne bewegung",
+  "events": [
+    {
+      "step": 1,
+      "type": "look",
+      "action": {
+        "name": "look",
+        "speed": 0,
+        "duration_ms": 0
+      },
+      "seen": [
+        {
+          "label": "tv",
+          "confidence": 0.76,
+          "x": 336.1,
+          "y": 200.7
+        },
+        {
+          "label": "chair",
+          "confidence": 0.63,
+          "x": 287.0,
+          "y": 275.7
+        },
+        {
+          "label": "chair",
+          "confidence": 0.56,
+          "x": 318.0,
+          "y": 276.4
+        },
+        {
+          "label": "person",
+          "confidence": 0.48,
+          "x": 259.8,
+          "y": 235.3
+        }
+      ],
+      "distance_cm": 146.2
+    },
+    {
+      "step": 2,
+      "type": "done",
+      "action": {
+        "name": "done"
+      }
+    }
+  ]
+}

@@ -22,10 +22,15 @@ class Brain:
         )
         self.model = model
 
-    def decide(self, goal, perception, available_actions, history=None):
-        """Fragt das LLM nach der nächsten Aktion.
-        Gibt ein dict zurück wie {"name": "forward", "distance_cm": 30}.
-        history = Liste bereits ausgeführter Aktionen für dieses Ziel.
+    def decide(self, goal, perception, available_actions, history=None, memory_context=None):
+        """
+        Fragt das LLM nach der nächsten Aktion.
+
+        Rückgabe-Beispiel:
+            {"name": "forward", "speed": 1200, "duration_ms": 800}
+
+        history = Aktionen/Wahrnehmungen im aktuellen Ziel-Loop.
+        memory_context = kompakter Kontext aus session_memory.json.
         """
         system = (
             "Du steuerst einen Roboter-Rover. Du bekommst ein Ziel, eine Liste "
@@ -36,12 +41,18 @@ class Brain:
         )
         history_part = ""
         if history:
-            history_part = f"\nBereits ausgeführt: {json.dumps(history, ensure_ascii=False)}"
+            history_part = f"\nBereits im aktuellen Ziel-Loop ausgeführt: {json.dumps(history, ensure_ascii=False)}"
+
+        memory_part = ""
+        if memory_context:
+            memory_part = f"\nSession-Memory: {json.dumps(memory_context, ensure_ascii=False)}"
+
         user = (
             f"Ziel: {goal}\n"
-            f"Sichtbare Objekte: {json.dumps(perception, ensure_ascii=False)}\n"
+            f"Aktuelle Wahrnehmung: {json.dumps(perception, ensure_ascii=False)}\n"
             f"Erlaubte Aktionen: {json.dumps(available_actions, ensure_ascii=False)}"
-            f"{history_part}\n"
+            f"{history_part}"
+            f"{memory_part}\n"
             "Welche Aktion als Nächstes?"
         )
         resp = self.client.chat.completions.create(
