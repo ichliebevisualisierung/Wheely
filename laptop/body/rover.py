@@ -63,8 +63,11 @@ class Rover:
         return self._move("right", distance_cm, speed, duration_ms)
 
     def stop(self):
-        r = requests.post(f"{self.base}/stop", timeout=self.timeout)
-        return r.json()
+        try:
+            r = requests.post(f"{self.base}/stop", timeout=2)
+            return r.json()
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ---- Sensoren ---------------------------------------------------- #
     def get_distance(self):
