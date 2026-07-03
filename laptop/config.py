@@ -1,7 +1,7 @@
 """Zentrale Einstellungen. Hier IP & Co. anpassen, nicht im Code verstreut."""
 
 # Raspberry Pi
-PI_IP = "172.20.10.10"
+PI_IP = "172.20.10.6"
 PI_PORT = 8080
 
 # ---------------- LLM ----------------
