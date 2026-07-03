@@ -269,8 +269,6 @@ def run():
                     "perception": perception,
                     "distance_cm": last_distance
                 })
-                objects, last_distance = do_look(rover, perceiver)
-                perception = build_perception_for_llm(objects, last_distance)
 
                 look_event = {
                     "step": step + 1,

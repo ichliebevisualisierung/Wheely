@@ -4,28 +4,20 @@
 PI_IP = "192.168.137.20"
 PI_PORT = 8080
 
-# ---------------- LLM ----------------
+# LLM (Uni-Zugang). base_url + key kommen aus der .env-Datei.
+LLM_MODEL = "Mistral Small 3-2-24b Instruct KI:Inferenz.nrw"  # Beispiel — euer Uni-Modell eintragen
 
-LLM_MODEL_KI = "Mistral Small 3-2-24b Instruct KI:Inferenz.nrw"
-
-# Standard-LLM
-LLM_MODEL = LLM_MODEL_KI
-
-# ---------------- Vision ----------------
-
-VISION_MODE = "yolo"      # "yolo" oder "mistral"
-
+# YOLO
 YOLO_MODEL = "yolov8n.pt"
 YOLO_MIN_CONFIDENCE = 0.4
 
-MISTRAL_VISION_MODEL = "Mistral Small 3-2-24b Instruct KI:Inferenz.nrw"
-
-# ---------------- Fahr-Kalibrierung ----------------
-
+# Fahr-Kalibrierung (am Rover ausmessen!)
 MS_PER_CM = 80
 
+# Mindest-Fahrwerte geradeaus
 MIN_SPEED = 500
 MIN_DURATION_MS = 200
 
+# Mindest-Drehwerte (höher, damit Kurven spürbar sind)
 MIN_TURN_SPEED = 500
 MIN_TURN_DURATION_MS = 200
