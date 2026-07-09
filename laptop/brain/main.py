@@ -1,8 +1,13 @@
 """
 main.py — Der Agent-Loop (Schicht 3, Einstiegspunkt)
 
-Verbindet Körper (Rover), Augen (Perceiver) und Verstand (Brain) zu einem
-agentischen Sense-Plan-Act-Loop.
+Ablauf:
+  1. Mensch gibt Ziel ein
+  2. LLM erstellt einen Plan (make_plan) — vorausschauendes Denken
+  3. Sense-Plan-Act-Loop:
+     - Ultraschall bei jedem Schritt
+     - decide() wählt nächste Aktion (mit Plan + Memory als Kontext)
+     - Nach jedem look: Plan dynamisch überprüfen/anpassen (revise_plan)
 
 Start:
     cd laptop
@@ -46,8 +51,6 @@ def do_look(rover, perceiver):
     speichert Debug-Bilder.
 
     Gibt ein Tuple zurück: (objekte, distanz_cm)
-    - objekte: Liste erkannter Objekte (Format aus Perceiver-Schnittstelle)
-    - distanz_cm: Ultraschall-Abstand (oder -1 bei Fehler)
     """
     print("[look] Mache Bild...")
     image = rover.get_camera_image()
@@ -88,6 +91,7 @@ def do_look(rover, perceiver):
 
     return objects, distance
 
+
 def do_look_mistral(rover):
     print("[look-mistral] Mache Bild...")
     image = rover.get_camera_image()
@@ -112,7 +116,7 @@ def do_look_mistral(rover):
         messages=[{
             "role": "user",
             "content": [
-                {"type": "text", "text": "Beschreibe kurz, was auf dem Roboter-Kamerabild zu sehen ist."},
+                {"type": "text", "text": "Beschreibe kurz, was auf dem Roboter-Kamerabild zu sehen ist. Jedes Objekt braucht eine Koordinatenangabe (x,y) in Pixeln, die obere linke Ecke ist (0,0)."},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
             ]
         }],
@@ -125,23 +129,17 @@ def do_look_mistral(rover):
 
     return [{"type": "vision_description", "description": description}], distance
 
-def build_perception_for_llm(objects, distance_cm):
-    """Baut die Wahrnehmung zusammen, die ans LLM geht.
 
-    Das LLM bekommt nicht nur die erkannten Objekte, sondern auch die
-    Ultraschall-Distanz als Text — so kann es informierte Entscheidungen
-    treffen (z.B. "Hindernis 12 cm voraus → erst drehen, dann fahren").
-    """
+def build_perception_for_llm(objects, distance_cm):
+    """Baut die Wahrnehmung zusammen, die ans LLM geht."""
     perception = []
 
-    # Ultraschall-Info als eigener Eintrag
     if distance_cm >= 0:
         perception.append({
             "type": "ultrasonic",
             "info": f"Hindernis {distance_cm} cm voraus"
         })
 
-    # Erkannte Objekte
     for obj in objects:
         perception.append({
             "type": "object",
@@ -173,6 +171,7 @@ def run():
     perceiver = YoloPerceiver(config.YOLO_MODEL, config.YOLO_MIN_CONFIDENCE)
     brain = Brain(config.LLM_MODEL)
     memory = SessionMemory()
+
     print("Vision-Modell auswählen:")
     print("1 - YOLO")
     print("2 - Mistral Vision")
@@ -182,7 +181,7 @@ def run():
     print(f"Vision-Modus: {config.VISION_MODE}")
 
     print("Wheely KI-Agent gestartet.")
-    print("Die KI wählt pro Schritt genau EINE Aktion aus actions.py.")
+    print("Die KI plant vorausschauend und wählt pro Schritt genau EINE Aktion.")
     print()
     print("Beispiele für Bewegung:")
     print("  fahr ein kleines stück vorwärts")
@@ -213,14 +212,17 @@ def run():
         print(f"[Ziel] {goal}")
         memory.start_goal(goal)
 
+        # ---- PLAN erstellen (einmalig, vorausschauend) --------------- #
+        print("[plan erstellen] Denke nach...")
+        plan = brain.make_plan(goal, AVAILABLE_ACTIONS,
+                               memory_context=memory.prompt_context())
+        print(f"[plan]\n{plan}\n")
+        memory.remember({"type": "plan_created", "plan": plan})
+
         for step in range(max_steps):
-            # ---- SENSE (Ultraschall, jeder Schritt) ---------------------
-            # Billig (ein HTTP-Call, paar ms), gibt dem LLM ständige
-            # Raumwahrnehmung — ohne dass jemand "schau" sagen muss.
+            # ---- SENSE (Ultraschall, jeder Schritt) -----------------
             last_distance = rover.get_distance()
             if last_distance >= 0:
-                # Distanz in die bestehende Wahrnehmung einpflegen/aktualisieren
-                # (entferne alten Ultraschall-Eintrag, füge neuen hinzu)
                 perception = [p for p in perception if p.get("type") != "ultrasonic"]
                 perception.insert(0, {
                     "type": "ultrasonic",
@@ -228,15 +230,32 @@ def run():
                 })
                 print(f"[sense] Ultraschall: {last_distance} cm")
 
-            # ---- PLAN ---------------------------------------------------
-            action = brain.decide(
-                goal,
-                perception,
-                AVAILABLE_ACTIONS,
-                history,
-                memory_context=memory.prompt_context(),
-            )
-            print(f"[plan {step + 1}] {action}")
+            # ---- FORCED LOOK: nach 2 Bewegungen ohne look ----------
+            # Harter Code — das LLM "vergisst" nachzuschauen, deshalb
+            # erzwingen wir es. Wie der Ultraschall-Reflex: Code für
+            # Zuverlässigkeit, LLM für Klugheit.
+            moves_since_look = 0
+            for h in reversed(history):
+                if h.get("name") == "look":
+                    break
+                if h.get("name") in ("forward", "backward", "left", "right",
+                                     "left_90", "right_90", "left_180", "right_180"):
+                    moves_since_look += 1
+
+            if moves_since_look >= 2:
+                print(f"[forced look] {moves_since_look} Bewegungen ohne look — schaue nach.")
+                action = {"name": "look"}
+            else:
+                # ---- PLAN (Aktion wählen, mit Plan als Kontext) ----------
+                action = brain.decide(
+                    goal,
+                    perception,
+                    AVAILABLE_ACTIONS,
+                    history,
+                    memory_context=memory.prompt_context(),
+                    plan=plan,
+                )
+            print(f"[schritt {step + 1}] {action}")
 
             # Sicherheitsnetz: unlesbare/fehlerhafte LLM-Antwort
             if action.get("error"):
@@ -256,7 +275,7 @@ def run():
                 })
                 break
 
-            # ---- SENSE (look) ------------------------------------------
+            # ---- SENSE (look) ---------------------------------------
             if name == "look":
                 if config.VISION_MODE == "mistral":
                     perception, last_distance = do_look_mistral(rover)
@@ -282,9 +301,24 @@ def run():
                     "distance_cm": last_distance,
                 })
                 memory.remember(look_event)
+
+                # ---- PLAN dynamisch überarbeiten (nach jedem look) ---
+                print("[plan überprüfen] Passt der Plan noch?")
+                revised_plan = brain.revise_plan(goal, plan, perception, history)
+                if revised_plan and revised_plan != plan:
+                    print(f"[plan aktualisiert]\n{revised_plan}\n")
+                    plan = revised_plan
+                    memory.remember({
+                        "step": step + 1,
+                        "type": "plan_revised",
+                        "plan": plan,
+                    })
+                else:
+                    print("[plan] Plan bleibt unverändert.")
+
                 continue
 
-            # ---- REFLEX: Hindernis-Check vor Vorwärtsbewegung ----------
+            # ---- REFLEX: Hindernis-Check vor Vorwärtsbewegung -------
             # Das ist harter Code, KEIN LLM-Aufruf — muss schnell gehen.
             if name in ("forward",):
                 dist = rover.get_distance()
@@ -308,7 +342,7 @@ def run():
                     perception = build_perception_for_llm([], dist)
                     continue
 
-            # ---- ACT ---------------------------------------------------
+            # ---- ACT -------------------------------------------------
             try:
                 result = execute(action, rover)
                 print(f"[result] {result}")

@@ -87,13 +87,13 @@ def execute(action, rover):
 
     # Vordefinierte Drehungen — feste, kalibrierte Werte
     if name == "left_90":
-        return rover.left(speed=2000, duration_ms=600)
+        return rover.left(speed=2000, duration_ms=450)
     if name == "left_180":
-        return rover.left(speed=2000, duration_ms=1100)
+        return rover.left(speed=2000, duration_ms=900)
     if name == "right_90":
-        return rover.right(speed=2000, duration_ms=600)
+        return rover.right(speed=2000, duration_ms=450)
     if name == "right_180":
-        return rover.right(speed=2000, duration_ms=1100)
+        return rover.right(speed=2000, duration_ms=900)
 
     # Variable Bewegungen — Werte defensiv absichern
     if name in ("forward", "backward", "left", "right"):
