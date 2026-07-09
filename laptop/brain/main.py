@@ -209,7 +209,7 @@ def run():
         perception = []
         last_distance = -1
         history = []
-        max_steps = 10
+        max_steps = 30
         print(f"[Ziel] {goal}")
         memory.start_goal(goal)
 
@@ -260,26 +260,25 @@ def run():
             if name == "look":
                 if config.VISION_MODE == "mistral":
                     perception, last_distance = do_look_mistral(rover)
+                    seen_for_memory = perception
                 else:
                     objects, last_distance = do_look(rover, perceiver)
                     perception = build_perception_for_llm(objects, last_distance)
-
-                history.append({
-                    "name": "look",
-                    "perception": perception,
-                    "distance_cm": last_distance
-                })
+                    seen_for_memory = memory_seen_objects(objects)
 
                 look_event = {
                     "step": step + 1,
                     "type": "look",
+                    "vision_mode": config.VISION_MODE,
                     "action": action,
-                    "seen": memory_seen_objects(objects),
+                    "seen": seen_for_memory,
                     "distance_cm": last_distance,
                 }
+
                 history.append({
                     "name": "look",
-                    "seen": look_event["seen"],
+                    "vision_mode": config.VISION_MODE,
+                    "seen": seen_for_memory,
                     "distance_cm": last_distance,
                 })
                 memory.remember(look_event)
