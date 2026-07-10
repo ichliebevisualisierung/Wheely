@@ -112,6 +112,17 @@ class Rover:
         except Exception:
             return False
 
+    def set_led(self, color):
+        try:
+            r = requests.post(
+                f"{self.base}/led",
+                json={"color": color},
+                timeout=2
+            )
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
 if __name__ == "__main__":
     import sys

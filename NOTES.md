@@ -162,3 +162,10 @@ Der Pi ist der Körper (HTTP-API steuert Hardware), der Laptop ist das Gehirn (Y
 - Wird bei JEDEM Agent-Schritt gelesen, nicht nur bei `look`
 - Wert geht als `{"type": "ultrasonic", "info": "Hindernis XX cm voraus"}` ans LLM
 - Reflex-Schwelle: 30 cm → automatischer Stopp bei `forward`, ohne LLM zu fragen
+
+##Leuchten der Lampen Bedeutung
+Blau   = KI denkt
+Gelb   = Kamera wird ausgewertet
+Grün   = Ziel erreicht
+Rot    = Fehler
+Aus    = normaler Betrieb

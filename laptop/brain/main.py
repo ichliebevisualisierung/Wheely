@@ -229,42 +229,63 @@ def run():
                 print(f"[sense] Ultraschall: {last_distance} cm")
 
             # ---- PLAN ---------------------------------------------------
-            action = brain.decide(
-                goal,
-                perception,
-                AVAILABLE_ACTIONS,
-                history,
-                memory_context=memory.prompt_context(),
-            )
+            rover.set_led("blue")
+
+            try:
+                action = brain.decide(
+                    goal,
+                    perception,
+                    AVAILABLE_ACTIONS,
+                    history,
+                    memory_context=memory.prompt_context(),
+                )
+            finally:
+                rover.set_led("off")
+
             print(f"[plan {step + 1}] {action}")
 
             # Sicherheitsnetz: unlesbare/fehlerhafte LLM-Antwort
             if action.get("error"):
                 print("[error]", action)
                 rover.stop()
+                rover.set_led("red")
+                time.sleep(2)
+                rover.set_led("off")
                 break
 
             name = action.get("name")
 
             # Ziel erreicht
             if name == "done":
+                rover.stop()
+                rover.set_led("green")
+
                 print("[fertig] Ziel erreicht.")
+
                 memory.remember({
                     "step": step + 1,
                     "type": "done",
                     "action": action,
                 })
+
+                time.sleep(2)
+                rover.set_led("off")
                 break
 
             # ---- SENSE (look) ------------------------------------------
             if name == "look":
-                if config.VISION_MODE == "mistral":
-                    perception, last_distance = do_look_mistral(rover)
-                    seen_for_memory = perception
-                else:
-                    objects, last_distance = do_look(rover, perceiver)
-                    perception = build_perception_for_llm(objects, last_distance)
-                    seen_for_memory = memory_seen_objects(objects)
+                rover.set_led("yellow")
+
+                try:
+                    if config.VISION_MODE == "mistral":
+                        perception, last_distance = do_look_mistral(rover)
+                        seen_for_memory = perception
+                    else:
+                        objects, last_distance = do_look(rover, perceiver)
+                        perception = build_perception_for_llm(objects, last_distance)
+                        seen_for_memory = memory_seen_objects(objects)
+                finally:
+                    rover.set_led("off")
 
                 look_event = {
                     "step": step + 1,
@@ -323,12 +344,17 @@ def run():
             except Exception as e:
                 print("[exception]", e)
                 rover.stop()
+                rover.set_led("red")
+
                 memory.remember({
                     "step": step + 1,
                     "type": "exception",
                     "action": action,
                     "error": str(e),
                 })
+
+                time.sleep(2)
+                rover.set_led("off")
                 break
 
             time.sleep(0.3)
