@@ -112,7 +112,7 @@ def do_look_mistral(rover):
         messages=[{
             "role": "user",
             "content": [
-                {"type": "text", "text": "Beschreibe kurz, was auf dem Roboter-Kamerabild zu sehen ist."},
+                {"type": "text", "text": "Beschreibe kurz, was auf dem Roboter-Kamerabild zu sehen ist. Beschreibe, wo Objekte auf dem Bild sind (zB links, rechts, mitte etc.)."},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
             ]
         }],
@@ -264,6 +264,22 @@ def run():
 
             # Ziel erreicht
             if name == "done":
+                goal_check = brain.goal_reached(goal, perception)
+                if not goal_check.get("done"):
+                    print(f"[done-check] Noch nicht fertig: {goal_check.get('reason')}")
+                    history.append({
+                        "name": "goal_check",
+                        "done": False,
+                        "reason": goal_check.get("reason"),
+                    })
+                    memory.remember({
+                        "step": step + 1,
+                        "type": "done_rejected",
+                        "action": action,
+                        "reason": goal_check.get("reason"),
+                    })
+                    continue
+
                 rover.stop()
                 rover.set_led("green")
 
@@ -312,6 +328,11 @@ def run():
                 memory.remember(look_event)
 
                 goal_check = brain.goal_reached(goal, perception)
+                history.append({
+                    "name": "goal_check",
+                    "done": bool(goal_check.get("done")),
+                    "reason": goal_check.get("reason"),
+                })
                 if goal_check.get("done"):
                     print("[fertig] Ziel erreicht.")
                     memory.remember({
