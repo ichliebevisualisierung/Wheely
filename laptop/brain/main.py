@@ -264,21 +264,27 @@ def run():
 
             # Ziel erreicht
             if name == "done":
-                goal_check = brain.goal_reached(goal, perception)
-                if not goal_check.get("done"):
-                    print(f"[done-check] Noch nicht fertig: {goal_check.get('reason')}")
-                    history.append({
-                        "name": "goal_check",
-                        "done": False,
-                        "reason": goal_check.get("reason"),
-                    })
-                    memory.remember({
-                        "step": step + 1,
-                        "type": "done_rejected",
-                        "action": action,
-                        "reason": goal_check.get("reason"),
-                    })
-                    continue
+                last_goal_check = next(
+                    (h for h in reversed(history) if h.get("name") == "goal_check"),
+                    None,
+                )
+
+                if last_goal_check and not last_goal_check.get("done"):
+                    goal_check = brain.goal_reached(goal, perception)
+                    if not goal_check.get("done"):
+                        print(f"[done-check] Noch nicht fertig: {goal_check.get('reason')}")
+                        history.append({
+                            "name": "goal_check",
+                            "done": False,
+                            "reason": goal_check.get("reason"),
+                        })
+                        memory.remember({
+                            "step": step + 1,
+                            "type": "done_rejected",
+                            "action": action,
+                            "reason": goal_check.get("reason"),
+                        })
+                        continue
 
                 rover.stop()
                 rover.set_led("green")
