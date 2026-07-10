@@ -38,8 +38,10 @@ AVAILABLE_ACTIONS = {
     "backward":  f"Fahre rückwärts. {_SPEED_HINT}. {_DURATION_HINT}",
     "left":      f"Drehe nach links (auf der Stelle). {_SPEED_HINT}. {_DURATION_HINT}",
     "right":     f"Drehe nach rechts (auf der Stelle). {_SPEED_HINT}. {_DURATION_HINT}",
+    "left_45":   "Drehe 45 Grad nach links (auf der Stelle) — vordefinierte Drehung.",
     "left_90":   "Drehe 90 Grad nach links (auf der Stelle) — vordefinierte Drehung.",
     "left_180":  "Drehe 180 Grad nach links (auf der Stelle) — vordefinierte Drehung.",
+    "right_45":  "Drehe 45 Grad nach rechts (auf der Stelle) — vordefinierte Drehung.",
     "right_90":  "Drehe 90 Grad nach rechts (auf der Stelle) — vordefinierte Drehung.",
     "right_180": "Drehe 180 Grad nach rechts (auf der Stelle) — vordefinierte Drehung.",
     "stop":      "Halte an.",
@@ -86,10 +88,14 @@ def execute(action, rover):
     raw_duration = action.get("duration_ms")
 
     # Vordefinierte Drehungen — feste, kalibrierte Werte
+    if name == "left_45":
+        return rover.left(speed=2000, duration_ms=300)
     if name == "left_90":
         return rover.left(speed=2000, duration_ms=600)
     if name == "left_180":
         return rover.left(speed=2000, duration_ms=1100)
+    if name == "right_45":
+        return rover.right(speed=2000, duration_ms=300)
     if name == "right_90":
         return rover.right(speed=2000, duration_ms=600)
     if name == "right_180":
