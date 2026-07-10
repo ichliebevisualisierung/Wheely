@@ -212,6 +212,13 @@ def run():
         max_steps = 30
         print(f"[Ziel] {goal}")
         memory.start_goal(goal)
+        initial_plan = brain.plan_goal(
+            goal,
+            AVAILABLE_ACTIONS,
+            memory_context=memory.prompt_context(),
+        )
+        memory.set_plan(initial_plan)
+        print(f"[planung] {initial_plan}")
 
         for step in range(max_steps):
             # ---- SENSE (Ultraschall, jeder Schritt) ---------------------
@@ -282,6 +289,18 @@ def run():
                     "distance_cm": last_distance,
                 })
                 memory.remember(look_event)
+
+                goal_check = brain.goal_reached(goal, perception)
+                if goal_check.get("done"):
+                    print("[fertig] Ziel erreicht.")
+                    memory.remember({
+                        "step": step + 1,
+                        "type": "done",
+                        "action": {"name": "done"},
+                        "reason": goal_check.get("reason"),
+                    })
+                    break
+
                 continue
 
             # ---- REFLEX: Hindernis-Check vor Vorwärtsbewegung ----------

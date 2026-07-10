@@ -18,6 +18,7 @@ class SessionMemory:
         # Datei beim Programmstart initialisieren
         self.write_data({
             "goal": None,
+            "plan": None,
             "events": []
         })
 
@@ -25,6 +26,7 @@ class SessionMemory:
         if not self.path.exists():
             return {
                 "goal": None,
+                "plan": None,
                 "events": []
             }
 
@@ -34,6 +36,7 @@ class SessionMemory:
         except Exception:
             return {
                 "goal": None,
+                "plan": None,
                 "events": []
             }
 
@@ -48,8 +51,16 @@ class SessionMemory:
         """
         self.write_data({
             "goal": goal,
+            "plan": None,
             "events": []
         })
+
+    def set_plan(self, plan):
+        """Speichert den Startplan als Top-Level-Feld fuer das aktuelle Goal."""
+        data = self.read_data()
+        data["plan"] = plan
+        self.write_data(data)
+        return plan
 
     def remember(self, event):
         """
@@ -73,5 +84,6 @@ class SessionMemory:
         data = self.read_data()
         return {
             "goal": data.get("goal"),
+            "plan": data.get("plan"),
             "recent_events": self.recent()
         }
