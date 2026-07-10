@@ -32,7 +32,7 @@ from hardware.motor import tankMotor
 from hardware.camera import Camera
 from hardware.ultrasonic import gpiozero_ultrasonic
 from hardware.infrared import Infrared
-
+from hardware.led import Led
 
 HOST = "0.0.0.0"
 PORT = 8080
@@ -56,7 +56,8 @@ MS_PER_CM = 80
 hardware_lock = threading.Lock()
 camera_lock = threading.Lock()
 sensor_lock = threading.Lock()
-
+led_lock = threading.Lock()
+led = Led()
 _camera = None
 _ultrasonic = None
 _infrared = None
@@ -148,7 +149,30 @@ def move(direction, speed=DEFAULT_SPEED, duration_ms=None, distance_cm=None):
         "right_motor": right,
     }
 
+LED_COLORS = {
+    "off": (0, 0, 0),
+    "blue": (0, 0, 255),
+    "yellow": (255, 255, 0),
+    "green": (0, 255, 0),
+    "red": (255, 0, 0),
+}
 
+
+def set_led(color_name):
+    color_name = str(color_name).lower()
+
+    if color_name not in LED_COLORS:
+        raise ValueError(
+            "Unbekannte Farbe. Erlaubt: off, blue, yellow, green, red"
+        )
+
+    rgb = LED_COLORS[color_name]
+    led.colorWipe(rgb, wait_ms=1)
+
+    return {
+        "color": color_name,
+        "rgb": rgb,
+    }
 # ---------------------------------------------------------------------- #
 #  HTTP-Handler
 # ---------------------------------------------------------------------- #
@@ -253,7 +277,26 @@ class RobotAPI(BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_json(500, {"ok": False, "error": str(e)})
             return
+        if path == "/led":
+            try:
+                body = self.read_json()
+                color = body.get("color", "off")
 
+                with led_lock:
+                    result = set_led(color)
+
+                self.send_json(200, {
+                    "ok": True,
+                    "result": result,
+                })
+
+            except Exception as e:
+                self.send_json(400, {
+                    "ok": False,
+                    "error": str(e),
+                })
+
+            return
         self.send_json(404, {"ok": False, "error": "unknown endpoint"})
 
 
@@ -262,7 +305,7 @@ class RobotAPI(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------- #
 def main():
     print(f"Robot API läuft auf Port {PORT}")
-    print("Endpunkte: POST /move, POST /stop,")
+    print("Endpunkte: POST /move, POST /stop, POST /led,")
     print("           GET  /distance, GET /line, GET /camera, GET /health")
     print("Beenden mit Ctrl+C")
 
